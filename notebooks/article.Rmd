@@ -1,0 +1,60 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+install.packages("openxlsx")
+library("openxlsx")
+
+data <- read.xlsx("~/Downloads/incendios-florestais-em-areas-protegidas-boi-areas-protegidas-2019-marco.xlsx", sheet = 1)
+
+data$DataHoraDeteccao <- convertToDate(data$DataHoraDeteccao)
+data$DataDeteccao <- convertToDate(data$DataDeteccao)
+data$InicioCombate <- convertToDate(data$InicioCombate)
+data$TerminoCombate <- convertToDate(data$TerminoCombate)
+```
+
+```{r}
+install.packages("dplyr")
+library(dplyr)
+
+install.packages("lubridate")
+library(lubridate)
+
+agg_df <- data |> group_by(month_year=floor_date(DataDeteccao, "month")) |> summarise(qty = n_distinct(NumBOI))
+```
+```{r}
+y <- ts(agg_df[,2], start=c(2019,1), frequency = 12)
+```
+
+```{r}
+n_months = 4 
+ts.plot(y, xlab="month_year", ylab="qty"); abline(v = time(y)[seq(n_months, length(y), by = n_months)], col = "red", lty = 3)
+```
+
+```{r}
+ts.plot(diff(y), xlab="month_year", ylab="qty")
+```
+
+```{r}
+acf(diff(y))
+pacf(diff(y))
+```
+ARIMA(2,1,2) com sazonalidade a cada 4 meses.
+
+```{r}
+arima_model <- arima(diff(y), order=c(2,1,2))
+acf(arima_model$residuals)
+```
+
