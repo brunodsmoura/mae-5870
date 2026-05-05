@@ -10,6 +10,7 @@ install.packages("openxlsx")
 install.packages("dplyr")
 install.packages("lubridate")
 install.packages("car")
+install.packages("forecast")
 ```
 
 
@@ -18,6 +19,7 @@ library(openxlsx)
 library(dplyr)
 library(lubridate)
 library(car)
+library(forecast)
 ```
 
 ```{r}
@@ -32,6 +34,7 @@ data$TerminoCombate <- convertToDate(data$TerminoCombate)
 ```{r}
 agg_df <- data |> group_by(month_year=floor_date(DataDeteccao, "month")) |> summarise(qty = n_distinct(NumBOI))
 ```
+
 ```{r}
 y <- ts(agg_df[,2], start=c(2019,1), frequency = 12)
 ```
@@ -57,20 +60,42 @@ pacf(diff(diff(y), 12))
 ```{r}
 plot(stl(y[,1], s.window="periodic"))
 ```
-ARIMA(2,1,2) com sazonalidade a cada 12 meses.
+# Modeling
+## ARIMA(2,1,2) com sazonalidade a cada 12 meses.
 
 ```{r}
-arima_model <- arima(diff(y), order=c(2,1,2), seasonal=list(order=c(2,1,2), period=12))
-arima_model
+sarima_model <- arima(y, order=c(2,1,2), seasonal=list(order=c(2,1,2), period=12))
+sarima_model
 ```
 ```{r}
-linearHypothesis(arima_model, c("ar1 = 0", "ar2 = 0", "ma1 = 0", "ma2 = 0", "sar1 = 0", "sar2 = 0", "sma1 = 0", "sma2 = 0"))
+linearHypothesis(sarima_model, c("ar1 = 0", "ar2 = 0", "ma1 = 0", "ma2 = 0", "sar1 = 0", "sar2 = 0", "sma1 = 0", "sma2 = 0"))
 ```
 
 
 ```{r}
-acf(arima_model$residuals)
+acf(sarima_model$residuals)
 ```
 ```{r}
-Box.test(y, lag = 11, type = "Ljung-Box")
+qqPlot(sarima_model$residuals)
 ```
+
+
+```{r}
+Box.test(sarima_model$residuals, lag = 11, type = "Ljung-Box")
+```
+
+```{r}
+aa_model <- auto.arima(y)
+summary(aa_model)
+```
+```{r}
+acf(aa_model$residuals)
+```
+```{r}
+qqPlot(aa_model$residuals)
+```
+
+```{r}
+Box.test(aa_model$residuals, lag = 11, type = "Ljung-Box")
+```
+
