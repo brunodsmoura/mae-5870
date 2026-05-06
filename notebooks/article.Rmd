@@ -11,6 +11,7 @@ install.packages("dplyr")
 install.packages("lubridate")
 install.packages("car")
 install.packages("forecast")
+install.packages("glarma")
 ```
 
 
@@ -20,6 +21,7 @@ library(dplyr)
 library(lubridate)
 library(car)
 library(forecast)
+library(glarma)
 ```
 
 ```{r}
@@ -49,9 +51,13 @@ ts.plot(diff(y), xlab="month_year", ylab="qty")
 ```
 
 ```{r}
-ts.plot(diff(diff(y), 12), xlab="month_year", ylab="qty")
+acf(diff(y))
+pacf(diff(y))
 ```
 
+```{r}
+ts.plot(diff(diff(y), 12), xlab="month_year", ylab="qty")
+```
 
 ```{r}
 acf(diff(diff(y), 12))
@@ -98,4 +104,19 @@ qqPlot(aa_model$residuals)
 ```{r}
 Box.test(aa_model$residuals, lag = 11, type = "Ljung-Box")
 ```
+Criar modelo garma com variável explicativa do periodo de junho a setembro (meses mais secos)
 
+```{r}
+dry_weather <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 6:9)
+X <- cbind(intercept = 1, dry_weather = dry_weather)
+
+garma_model <- glarma(y, X, phiLags=c(1), thetaLags=c(2))
+garma_model
+```
+
+```{r}
+acf(garma_model$residuals)
+```
+```{r}
+qqPlot(garma_model$residuals)
+```
