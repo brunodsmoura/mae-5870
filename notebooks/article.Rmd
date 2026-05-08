@@ -12,6 +12,7 @@ install.packages("lubridate")
 install.packages("car")
 install.packages("forecast")
 install.packages("glarma")
+install.packages("lmtest")
 ```
 
 
@@ -22,6 +23,7 @@ library(lubridate)
 library(car)
 library(forecast)
 library(glarma)
+library(lmtest)
 ```
 
 ```{r}
@@ -45,24 +47,56 @@ y <- ts(agg_df[,2], start=c(2019,1), frequency = 12)
 n_months = 12 
 ts.plot(y, xlab="month_year", ylab="qty"); abline(v = time(y)[seq(n_months, length(y), by = n_months)], col = "red", lty = 3)
 ```
+```{r}
+mean(y); var(y[,1])
+```
+
+A imagem acima apresenta a série temporal de Incêndios Florestais em São Paulo 
+de 2019 até final de 2025. Destaca-se a tendência positiva entre os meses de 
+maio e setembro, seguido de uma queda, além de uma repetição sazonal anual 
+aparente. Nota-se também que a mesma não é estacionária. Aplicarei a 
+diferenciação no lag 12 para avaliar se a tendência se mantém.
 
 ```{r}
-ts.plot(diff(y), xlab="month_year", ylab="qty")
+mean(diff(y, 12)); var(diff(y[,1], 12))
 ```
 
 ```{r}
-acf(diff(y))
-pacf(diff(y))
+ts.plot(diff(y, 12), xlab="month_year", ylab="qty")
+```
+O gráfico acima apresenta uma tendência levemente decrescente. Antes de seguirmos
+para a análise das funções de autocorrelação (total - ACF e parcial - PACF), efetuaremos
+uma nova diferenciação.
+
+```{r}
+diff_y_both_12_and_1 <- diff(diff(y, 12), 1)
 ```
 
 ```{r}
-ts.plot(diff(diff(y), 12), xlab="month_year", ylab="qty")
+ts.plot(diff_y_both_12_and_1, xlab="month_year", ylab="qty")
 ```
 
 ```{r}
-acf(diff(diff(y), 12))
-pacf(diff(diff(y), 12))
+mean(diff_y_both_12_and_1); var(diff_y_both_12_and_1[,1])
 ```
+
+Após essa diferenciação dupla perde-se a tendência vista na imagem anterior, a 
+série passa a ter média próxima de 0 e variância ao redor de 264. Analisarei os
+gráficos da função de autocorrelação (total - ACF e parcial - PACF) a seguir.
+
+```{r}
+acf(diff_y_both_12_and_1)
+pacf(diff_y_both_12_and_1)
+```
+O gráfico de ACF apresenta lags relevantes no instante 2, além de uma rein-
+cidência no lag 12. De fato existe sazonalidade com frequência de 12 meses. 
+Com base neste gráfico definiremos o valor dos parâmetros q e Q referente ao
+componente de média móvel.
+
+Já o gráfico de PACF também apresenta lags relevantes no instante 2 e reincidên-
+cia no lag 12. Com base neste gráfico definiremos o valor dos parâmeotrs p e P
+referente ao componente de auto regressão.
+
 ```{r}
 plot(stl(y[,1], s.window="periodic"))
 ```
@@ -70,11 +104,16 @@ plot(stl(y[,1], s.window="periodic"))
 ## ARIMA(2,1,2) com sazonalidade a cada 12 meses.
 
 ```{r}
-sarima_model <- arima(y, order=c(2,1,2), seasonal=list(order=c(2,1,2), period=12))
+sarima_model <- arima(y, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12), fixed=c(0, NA, NA))
 sarima_model
 ```
 ```{r}
-linearHypothesis(sarima_model, c("ar1 = 0", "ar2 = 0", "ma1 = 0", "ma2 = 0", "sar1 = 0", "sar2 = 0", "sma1 = 0", "sma2 = 0"))
+coeftest(sarima_model)
+```
+
+
+```{r}
+# linearHypothesis(sarima_model, c("ma2 = 0", "sma1 = 0"))
 ```
 
 
@@ -95,8 +134,13 @@ aa_model <- auto.arima(y)
 summary(aa_model)
 ```
 ```{r}
+coeftest(aa_model)
+```
+
+```{r}
 acf(aa_model$residuals)
 ```
+
 ```{r}
 qqPlot(aa_model$residuals)
 ```
@@ -104,11 +148,17 @@ qqPlot(aa_model$residuals)
 ```{r}
 Box.test(aa_model$residuals, lag = 11, type = "Ljung-Box")
 ```
-Criar modelo garma com variável explicativa do periodo de junho a setembro (meses mais secos)
+Criar modelo garma com variável explicativa do periodo de agosto a setembro (meses mais secos)
 
 ```{r}
-dry_weather <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 6:9)
-X <- cbind(intercept = 1, dry_weather = dry_weather)
+# dry_weather <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 8:9)
+# X <- cbind(intercept = 1, dry_weather = dry_weather)
+
+is_august <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 8)
+is_september <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 9)
+is_summer <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% c(1,2,3,12))
+
+X <- cbind(intercept = 1, is_august = is_august, is_september = is_september, is_summer = is_summer)
 
 garma_model <- glarma(y, X, phiLags=c(1), thetaLags=c(2))
 garma_model
