@@ -101,19 +101,23 @@ referente ao componente de auto regressão.
 plot(stl(y[,1], s.window="periodic"))
 ```
 # Modeling
-## ARIMA(2,1,2) com sazonalidade a cada 12 meses.
+## SARIMA(0,1,2)(0,1,2)12
 
 ```{r}
-sarima_model <- arima(y, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12), fixed=c(0, NA, NA))
+sarima_model <- arima(y, order=c(0,1,2), seasonal=list(order=c(0,1,2), period=12), fixed=c(0, NA, 0, NA))
 sarima_model
 ```
+
 ```{r}
 coeftest(sarima_model)
 ```
 
+```{r}
+#linearHypothesis(sarima_model, c("ma2 = 0", "sma1 = 0"))
+```
 
 ```{r}
-# linearHypothesis(sarima_model, c("ma2 = 0", "sma1 = 0"))
+coef(sarima_model)
 ```
 
 
@@ -148,25 +152,24 @@ qqPlot(aa_model$residuals)
 ```{r}
 Box.test(aa_model$residuals, lag = 11, type = "Ljung-Box")
 ```
-Criar modelo garma com variável explicativa do periodo de agosto a setembro (meses mais secos)
-
 ```{r}
-# dry_weather <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 8:9)
-# X <- cbind(intercept = 1, dry_weather = dry_weather)
+months_ahead_fc <- predict(sarima_model, n.ahead = 6)
 
-is_august <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 8)
-is_september <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% 9)
-is_summer <- as.numeric(as.numeric(format(agg_df$month_year, "%m")) %in% c(1,2,3,12))
+ci <- 1.96
 
-X <- cbind(intercept = 1, is_august = is_august, is_september = is_september, is_summer = is_summer)
+upper_bound <- months_ahead_fc$pred + ci * months_ahead_fc$se
+lower_bound <- months_ahead_fc$pred - ci * months_ahead_fc$se
 
-garma_model <- glarma(y, X, phiLags=c(1), thetaLags=c(2))
-garma_model
+ts.plot(y, (y - residuals(sarima_model)), months_ahead_fc$pred, upper_bound, lower_bound, xlab="month_year", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray")); abline(h = 0, col = "black", lty = 4, lwd = 1)
 ```
 
 ```{r}
-acf(garma_model$residuals)
-```
-```{r}
-qqPlot(garma_model$residuals)
+months_ahead_fc <- predict(aa_model, n.ahead = 6)
+
+ci <- 1.96
+
+upper_bound <- months_ahead_fc$pred + ci * months_ahead_fc$se
+lower_bound <- months_ahead_fc$pred - ci * months_ahead_fc$se
+
+ts.plot(y, (y - residuals(aa_model)), months_ahead_fc$pred, upper_bound, lower_bound, xlab="month_year", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray")); abline(h = 0, col = "black", lty = 4, lwd = 1)
 ```
