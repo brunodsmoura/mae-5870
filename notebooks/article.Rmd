@@ -64,6 +64,7 @@ mean(diff(y, 12)); var(diff(y[,1], 12))
 ```{r}
 ts.plot(diff(y, 12), xlab="month_year", ylab="qty")
 ```
+
 O gráfico acima apresenta uma tendência levemente decrescente. Antes de seguirmos
 para a análise das funções de autocorrelação (total - ACF e parcial - PACF), efetuaremos
 uma nova diferenciação.
@@ -101,21 +102,16 @@ referente ao componente de auto regressão.
 plot(stl(y[,1], s.window="periodic"))
 ```
 # Modeling
-## SARIMA(0,1,2)(0,1,2)12
+## SARIMA(0,1,2)(0,1,1)12
 
 ```{r}
-sarima_model <- arima(y, order=c(0,1,2), seasonal=list(order=c(0,1,2), period=12), fixed=c(0, NA, 0, NA))
+sarima_model <- arima(y, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12), fixed=c(0, NA, NA))
 sarima_model
 ```
 
 ```{r}
 coeftest(sarima_model)
 ```
-
-```{r}
-#linearHypothesis(sarima_model, c("ma2 = 0", "sma1 = 0"))
-```
-
 ```{r}
 coef(sarima_model)
 ```
@@ -172,4 +168,71 @@ upper_bound <- months_ahead_fc$pred + ci * months_ahead_fc$se
 lower_bound <- months_ahead_fc$pred - ci * months_ahead_fc$se
 
 ts.plot(y, (y - residuals(aa_model)), months_ahead_fc$pred, upper_bound, lower_bound, xlab="month_year", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray")); abline(h = 0, col = "black", lty = 4, lwd = 1)
+```
+
+```{r}
+plot(data |> group_by(year(DataDeteccao)) |> summarise(nr_cities = n_distinct(NomMunicipio)))
+```
+Como notamos nos plots de previsão de ambos os modelos gerados, alguns tempos t 
+contaram com valores abaixo de 0.
+
+Buscando contornar essa situação, efetuarei o estudo da série aplicando a trans-
+formação log(valor+1) e avaliarei os gráficos da série para identificação de um
+novo conjunto de modelos.
+
+```{r}
+transformed_y <- log(y + 1)
+```
+
+```{r}
+n_months = 12 
+ts.plot(transformed_y, xlab="month_year", ylab="qty"); abline(v = time(transformed_y)[seq(n_months, length(transformed_y), by = n_months)], col = "red", lty = 3)
+```
+```{r}
+plot(stl(transformed_y[,1], s.window="periodic"))
+```
+
+```{r}
+diff_transformed_y <- diff(diff(transformed_y, 12), 1)
+```
+
+```{r}
+ts.plot(diff_transformed_y, xlab="month_year", ylab="qty")
+```
+```{r}
+acf(diff_transformed_y)
+pacf(diff_transformed_y)
+```
+
+
+```{r}
+sarima_model_t <- arima(transformed_y, order=c(2,1,0), seasonal=list(order=c(0,1,1), frequency=12))
+sarima_model_t
+```
+```{r}
+coeftest(sarima_model_t)
+```
+```{r}
+acf(sarima_model_t$residuals)
+```
+
+```{r}
+qqPlot(sarima_model_t$residuals)
+```
+
+
+```{r}
+months_ahead_fc <- predict(sarima_model_t, n.ahead = 6)
+
+ci <- 1.96
+
+predicted <- exp(months_ahead_fc$pred) - 1
+
+upper_bound <- months_ahead_fc$pred + ci * months_ahead_fc$se
+lower_bound <- months_ahead_fc$pred - ci * months_ahead_fc$se
+
+final_upper_bound <- exp(upper_bound) - 1
+final_lower_bound <- exp(lower_bound) - 1
+
+ts.plot(y, exp(fitted(sarima_model_t))-1, predicted, final_upper_bound, final_lower_bound, xlab="month_year", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray")); abline(h = 0, col = "black", lty = 4, lwd = 1)
 ```
