@@ -1,5 +1,5 @@
 ---
-  title: "R Notebook"
+title: "R Notebook"
 output: html_notebook
 ---
   
@@ -28,50 +28,63 @@ library(zoo)
 nvidia <- getSymbols("NVDA", src = "yahoo", from = "2007-01-01", auto.assign = FALSE) 
 head(nvidia) 
 ```
+Analisarei os preços da ação da NVIDIA publicados através do Yahoo Finances.
 
 ```{r}
 autoplot(nvidia$NVDA.Close)
 ```
+Nota-se um aumento significativo ao longo da pandemia, comumente atribuído ao uso
+do processamento para treinamento de large language models (chat gpt e outros).
+
+Calculo o log retorno, valor que verifica a dependência linear da mudança de preço
+ao longo do tempo. Ele mostra se o retorno do passado pode predizer a direção futura
+das movimentações de preço.
 ```{r}
 lr <- diff(log(nvidia$NVDA.Close)) 
 lr[1]<-0
 ```
 
 ```{r}
-autoplot(lr) 
+autoplot(lr)
 ```
+O gráfico do log retorno apresenta uma distribuição semelhante a um ruído branco,
+sendo assim um processo estacionário.
 
 ```{r}
 acf(lr)
 acf(lr^2)
 ```
+O plot da função de auto correlação do log retorno apresenta valores relevantes
+em diferentes lags, exemplo 1, 8, 16 e 20. O mesmo padrão pode ser notado quando
+analisado o log retorno ao quadrado, estando praticamente todos os lags relevantes.
+
 ```{r}
 pacf(lr)
 pacf(lr^2)
 ```
 
 ```{r}
-garch_model <- garchFit(formula = ~aparch(1,1), lr, include.mean = TRUE, 
+aparch_model <- garchFit(formula = ~aparch(1,0), lr, include.mean = TRUE, 
                         cond.dist = "sstd", trace = FALSE)
-summary(garch_model)
+summary(aparch_model)
 ```
 ```{r}
-acf(residuals(garch_model))
-plot(residuals(garch_model), type="l")
+acf(residuals(aparch_model))
+plot(residuals(aparch_model), type="l")
 ```
 
 ```{r}
-acf(residuals(garch_model, standardize = TRUE))
-acf(residuals(garch_model, standardize = TRUE)^2)
-plot(residuals(garch_model, standardize = TRUE), type="l")
-plot(garch_model, which = 13)
+acf(residuals(aparch_model, standardize = TRUE))
+acf(residuals(aparch_model, standardize = TRUE)^2)
+plot(residuals(aparch_model, standardize = TRUE), type="l")
+plot(aparch_model, which = 13)
 ```
 
 ```{r}
 ci <- 1.96
 
-predicted_value <- fitted(garch_model)
-se <- fGarch::volatility(garch_model)
+predicted_value <- fitted(aparch_model)
+se <- fGarch::volatility(aparch_model)
 
 upper_bound <- predicted_value + (2 * ci) * se
 lower_bound <- predicted_value - (2 * ci) * se
