@@ -1,0 +1,79 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+```{r}
+install.packages("forecast")
+install.packages("ggplot2")
+install.packages("car")
+install.packages("fGarch")
+install.packages("quantmod")
+install.packages("zoo")
+```
+
+
+```{r}
+library(forecast)
+library(ggplot2)
+library(car)
+library(fGarch)
+library(quantmod)
+library(zoo) 
+```
+
+```{r}
+amaz <- getSymbols("AMZN", src = "yahoo", from = "2007-01-01", auto.assign = FALSE) 
+head(amaz) 
+```
+```{r}
+autoplot(amaz$AMZN.Close)
+```
+```{r}
+lr <- diff(log(amaz$AMZN.Close)) 
+lr[1]<-0
+```
+
+```{r}
+autoplot(lr) 
+```
+
+```{r}
+acf(lr)
+acf(lr^2)
+```
+```{r}
+pacf(lr)
+pacf(lr^2)
+```
+
+```{r}
+garch_model <- garchFit(formula = ~aparch(1,1), lr, include.mean = TRUE, 
+                        cond.dist = "sstd", trace = FALSE)
+summary(garch_model)
+```
+```{r}
+acf(residuals(garch_model))
+plot(residuals(garch_model), type="l")
+```
+
+```{r}
+acf(residuals(garch_model, standardize = TRUE))
+acf(residuals(garch_model, standardize = TRUE)^2)
+plot(residuals(garch_model, standardize = TRUE), type="l")
+plot(garch_model, which = 13)
+```
+
+```{r}
+ci <- 1.96
+
+predicted_value <- fitted(garch_model)
+se <- fGarch::volatility(garch_model)
+
+upper_bound <- predicted_value + (2 * ci) * se
+lower_bound <- predicted_value - (2 * ci) * se
+
+ts.plot(ts(lr), ts(upper_bound), ts(lower_bound), xlab="index", ylab="log_retorno", lty=c(1,1,1), col=c("lightblue", "gray", "gray"))
+```
