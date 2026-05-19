@@ -28,13 +28,21 @@ library(zoo)
 nvidia <- getSymbols("NVDA", src = "yahoo", from = "2007-01-01", auto.assign = FALSE) 
 head(nvidia) 
 ```
-Analisarei os preços da ação da NVIDIA publicados através do Yahoo Finances.
+```{r}
+nrow(nvidia)
+```
+
+Analisarei os preços da ação da NVIDIA publicados através do Yahoo Finances. Tenho
+no total cerca de 4873 dias de preços de ações.
 
 ```{r}
 autoplot(nvidia$NVDA.Close)
 ```
-Nota-se um aumento significativo ao longo da pandemia, comumente atribuído ao uso
-do processamento para treinamento de large language models (chat gpt e outros).
+Figura 1 - Preço das ações da NVIDIA de 2007 até hoje.
+
+Nota-se um aumento ao longo da pandemia - a partir de 2020, além de uma subida 
+significativa atribuída ao uso de GPUs vendidos por eles para treinamento de lar-
+ge language models (chat gpt e outros).
 
 Calculo o log retorno, valor que verifica a dependência linear da mudança de preço
 ao longo do tempo. Ele mostra se o retorno do passado pode predizer a direção futura
@@ -47,21 +55,56 @@ lr[1]<-0
 ```{r}
 autoplot(lr)
 ```
-O gráfico do log retorno apresenta uma distribuição semelhante a um ruído branco,
-sendo assim um processo estacionário.
+Figura 2 - Gráfico da série de log retorno dos preços das ações da NVIDIA.
+
+O gráfico do log retorno apresenta uma forma/distribuição semelhante a de um ruído 
+branco. Com isso, conclui-se que o processo é estacionário.
+
+Analisaremos o comportamento da função de autocorrelação para o log retorno (tanto 
+o valor normal como ao quadrado).
 
 ```{r}
 acf(lr)
-acf(lr^2)
 ```
-O plot da função de auto correlação do log retorno apresenta valores relevantes
-em diferentes lags, exemplo 1, 8, 16 e 20. O mesmo padrão pode ser notado quando
-analisado o log retorno ao quadrado, estando praticamente todos os lags relevantes.
+Figura 3 - Gráfico da função de autocorrelação do log retorno.
+
+A Figura 3 apresenta o gráfico da função de autocorrelação para o log retorno. Nela
+vemos o lag 1 como significativo, seguido de alguns picos isolados nos lags 8, 16,
+20 e 30. Vale destacar que o lag 20 refere-se aproximadamente ao período de 1 
+mês corrido.
+
+É muito difícil prever o retorno diariamente, sendo assim difícil de encontrar dependência
+com valores passados que apontem a direção (positiva ou negativa) do valor do retorno 
+futuro.
+
+O pequeno pico no lag 1 demonstra que o log retorno de hoje depende do log retorno
+de ontem. Dado que temos cerca de 4873 dias de preços de ações é comum que o intervalo
+de confiança fique mais estreito e valores baixos de correlação possam parecer 
+estatisticamente relevantes.
+
+Dos 36 lags calculados é esperado que cerca de 2 apresentem valores significativos
+ao acaso.
 
 ```{r}
-pacf(lr)
-pacf(lr^2)
+acf(lr^2)
 ```
+Figura 4 - Gráfico da função de autocorrelação do log retorno ao quadrado.
+
+A Figura 3 apresenta o gráfico da função de autocorrelação para o log retorno ao 
+quadrado. O gráfico desta transformação pode apreentar dependência não linear e
+clusterização de volatilidade ou variação. 
+
+Ao aplicar a potência de 2 aos lags, nota-se que praticamente todos eles ficam
+com valores significantes, demonstrando autocorrelações positivas que tendem a 
+diminuir lentamente ao longo dos demais lags. 
+
+Geralmente, para séries financeiras, o retorno não tem variância condicional constante e 
+altos períodos de volatilidade tendem a ser agrupados. Ou seja, existe uma dependência
+forte em picos de variação do retorno baseado em seu histórico.
+
+Com base nisso, proponho um modelo APARCH(1,0) para modelar o comportamento da série
+de log retorno das ações da NVIDIA, usando a distribuição condicional t-student
+padronizada.
 
 ```{r}
 aparch_model <- garchFit(formula = ~aparch(1,0), lr, include.mean = TRUE, 
@@ -79,7 +122,6 @@ acf(residuals(aparch_model, standardize = TRUE)^2)
 plot(residuals(aparch_model, standardize = TRUE), type="l")
 plot(aparch_model, which = 13)
 ```
-
 ```{r}
 ci <- 1.96
 
