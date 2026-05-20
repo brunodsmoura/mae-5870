@@ -102,26 +102,66 @@ Geralmente, para séries financeiras, o retorno não tem variância condicional 
 altos períodos de volatilidade tendem a ser agrupados. Ou seja, existe uma dependência
 forte em picos de variação do retorno baseado em seu histórico.
 
-Com base nisso, proponho um modelo APARCH(1,0) para modelar o comportamento da série
-de log retorno das ações da NVIDIA, usando a distribuição condicional t-student
-padronizada.
+```{r}
+pacf(lr)
+```
+Figura 5 - Gráfico da função de autocorrelação parcial do log retorno.
+
+Assim como na análise da figura 3, notamos aqui a presença de lags relevantes nos 
+mesmos índices, como 8, 15, 20 e 30. Nota-se, entretanto, que o lag 1 é mais pronun-
+ciado. Com o conhecimento obtido até então, entendo que a série dos preços da ação
+da NVIDIA apresenta um comportamento autoregressivo, com parâmetro p = 1. Essa
+definição se dá pelo lag pronunciado em PACF e os lags do ACF estarem contidos
+no intervalo de confiança apresentado.
+
+Com base nisso, proponho um modelo APARCH(p,q), sendo p=1 e q=0 - logo APARCH(1,0), 
+para modelar o comportamento da série de log retorno das ações da NVIDIA, usando 
+a distribuição condicional t-student padronizada e assimétrica.
+
+A premissa adotada é que a volatilidade vista na Figura 4 é assimétrica, ou seja,
+informação negativa gera muito mais volatilidade do que informação positiva, mantida
+a mesma magnitude. Além disso, esse tipo de modelo é bastante utilizado para previsão
+de comportamento de preços de ações.
 
 ```{r}
 aparch_model <- garchFit(formula = ~aparch(1,0), lr, include.mean = TRUE, 
                         cond.dist = "sstd", trace = FALSE)
 summary(aparch_model)
 ```
+O modelo apresenta a relação das estatísticas geradas - parâmetros estimados, com 
+seus respectivos erros padrão, t-value e relevância estatística. Testes são aplicados
+adotando um intervalo de confiança de 95%. Destaca-se que todos os parâmetros são 
+estatisticamente relevantes, pois a probabilidade de encontrar um valor maior que 
+o t-value obtido é menor que 0.05.
+
+Além disso, são apresentados os testes dos resíduos padronizados. O teste de hipó-
+tese de Ljung-Box tem como Null Hypothesis a premissa que não existe autocorrelação
+nos resíduos - os dados são distribuídos independentemente. Um p-value > 0.05 é
+um bom sinal para o modelo, pois não rejeita a Null Hypothesis. Analisando os resul-
+tados nos lags 10 e 15, vemos que os valores apresentados são superiores a 0.05.
+
+Analisarei o comportamento dos resíduos obtidos deste modelo.
+
 ```{r}
-acf(residuals(aparch_model))
-plot(residuals(aparch_model), type="l")
+plot(residuals(aparch_model, standardize = TRUE), type="l")
 ```
+Figura 6 - Resíduos padronizados do modelo APARCH(1,0).
+
+Podemos ver na figura 6 que os resíduos tem uma aparência similar ao de um ruído
+branco.
 
 ```{r}
 acf(residuals(aparch_model, standardize = TRUE))
 acf(residuals(aparch_model, standardize = TRUE)^2)
-plot(residuals(aparch_model, standardize = TRUE), type="l")
+```
+Figura 7 - Gráfico da função de autocorrelação para os resíduos.
+
+
+```{r}
 plot(aparch_model, which = 13)
 ```
+
+
 ```{r}
 ci <- 1.96
 
