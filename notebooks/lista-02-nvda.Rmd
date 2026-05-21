@@ -114,17 +114,21 @@ da NVIDIA apresenta um comportamento autoregressivo, com parâmetro p = 1. Essa
 definição se dá pelo lag pronunciado em PACF e os lags do ACF estarem contidos
 no intervalo de confiança apresentado.
 
-Com base nisso, proponho um modelo APARCH(p,q), sendo p=1 e q=0 - logo APARCH(1,0), 
-para modelar o comportamento da série de log retorno das ações da NVIDIA, usando 
-a distribuição condicional t-student padronizada e assimétrica.
+Com base nesses dados, proponho um modelo APARCH(p,q), sendo p=1 e q=0 - logo 
+APARCH(1,0), para modelar o comportamento da série de log retorno das ações da 
+NVIDIA, usando a distribuição condicional t-student padronizada e assimétrica.
 
 A premissa adotada é que a volatilidade vista na Figura 4 é assimétrica, ou seja,
 informação negativa gera muito mais volatilidade do que informação positiva, mantida
 a mesma magnitude. Além disso, esse tipo de modelo é bastante utilizado para previsão
 de comportamento de preços de ações.
 
+Após avaliação dos resíduos padronizados quadrados, nota-se que o modelo com parâmetros
+p=1 e q=0 falha no teste Ljung-Box R^2. Sendo assim, é feita uma nova proposta de 
+modelo, com parâmetros p=2 e q=0.
+
 ```{r}
-aparch_model <- garchFit(formula = ~aparch(1,0), lr, include.mean = TRUE, 
+aparch_model <- garchFit(formula = ~aparch(2,0), lr, include.mean = TRUE, 
                         cond.dist = "sstd", trace = FALSE)
 summary(aparch_model)
 ```
@@ -137,30 +141,47 @@ o t-value obtido é menor que 0.05.
 Além disso, são apresentados os testes dos resíduos padronizados. O teste de hipó-
 tese de Ljung-Box tem como Null Hypothesis a premissa que não existe autocorrelação
 nos resíduos - os dados são distribuídos independentemente. Um p-value > 0.05 é
-um bom sinal para o modelo, pois não rejeita a Null Hypothesis. Analisando os resul-
-tados nos lags 10 e 15, vemos que os valores apresentados são superiores a 0.05.
+um bom sinal para o modelo, pois não rejeita a Null Hypothesis. Sendo assim, 
+espera-se que tanto os valores de R e R^2 não rejeitem a Null Hypothesis. Analisan-
+do os resultados nos lags 10 e 15, tanto para R quanto para R^2, vemos que os va-
+lores apresentados são superiores a 0.05.
 
 Analisarei o comportamento dos resíduos obtidos deste modelo.
 
 ```{r}
 plot(residuals(aparch_model, standardize = TRUE), type="l")
 ```
-Figura 6 - Resíduos padronizados do modelo APARCH(1,0).
+Figura 6 - Resíduos padronizados do modelo APARCH(2,0).
 
-Podemos ver na figura 6 que os resíduos tem uma aparência similar ao de um ruído
-branco.
+A figura 6 apresenta os resíduos padronizados ao longo da série e podemos notar 
+a semelhança do seu formato com a de um ruído branco. Seguirei com a análise da 
+autocorrelação deles.
 
 ```{r}
-acf(residuals(aparch_model, standardize = TRUE))
-acf(residuals(aparch_model, standardize = TRUE)^2)
+par(mfrow = c(1, 2), mar = c(6, 2, 6, 2))
+acf(residuals(aparch_model, standardize = TRUE), main="ACF dos resíduos")
+acf(residuals(aparch_model, standardize = TRUE)^2, main="ACF dos resíduos ao quadrado")
+par(mfrow = c(1, 1))
 ```
-Figura 7 - Gráfico da função de autocorrelação para os resíduos.
+Figura 7 - Gráficos da função de autocorrelação para os resíduos padronizados
+(as-is e ao quadrado) do modelo APARCH(2,0).
 
+A figura 7 apresenta os gráficos da função de autocorrelação dos resíduos padroni-
+zados do modelo para o valor as-is quanto ao quadrado. Espera-se que os valores de
+lag mantenham-se contidos dentro do intervalo de confiança apresentado.
+
+Tanto no primeiro quanto no segundo quadrante notamos que os valores seguem essa
+premissa, com poucos lags sendo considerados relevantes. Como informado anterior-
+mente, o tamanho do conjunto de dados analisado afeta diretamente no quão estrei-
+to o intervalo pode ficar.
 
 ```{r}
 plot(aparch_model, which = 13)
 ```
+Figura 8 - QQplot dos resíduos do modelo APARCH(2,0).
 
+Por fim, vemos na figura 8 que os resíduos seguem a distribuição condicional 
+t-student padronizada e assimétrica.
 
 ```{r}
 ci <- 1.96
@@ -173,3 +194,8 @@ lower_bound <- predicted_value - (2 * ci) * se
 
 ts.plot(ts(lr), ts(upper_bound), ts(lower_bound), xlab="index", ylab="log_retorno", lty=c(1,1,1), col=c("lightblue", "gray", "gray"))
 ```
+Figura 9 - Série de preços das ações da NVIDIA junto com o intervalo de confiança
+calculado com 2 desvios padrões estimados.
+
+A figura 9 encerra a análise destes dados, apresentando a série de preço das ações 
+da NVIDIA junto com o intervalo de confiança calculado com 2 desvios padrões estimados.
