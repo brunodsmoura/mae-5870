@@ -1,0 +1,201 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+  
+  This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+```{r}
+install.packages("forecast")
+install.packages("ggplot2")
+install.packages("car")
+install.packages("fGarch")
+install.packages("quantmod")
+install.packages("zoo")
+```
+
+
+```{r}
+library(forecast)
+library(ggplot2)
+library(car)
+library(fGarch)
+library(quantmod)
+library(zoo) 
+```
+
+```{r}
+nvidia <- getSymbols("NVDA", src = "yahoo", from = "2007-01-01", auto.assign = FALSE) 
+head(nvidia) 
+```
+```{r}
+nrow(nvidia)
+```
+
+Analisarei os preços da ação da NVIDIA publicados através do Yahoo Finances. Tenho
+no total cerca de 4873 dias de preços de ações.
+
+```{r}
+autoplot(nvidia$NVDA.Close)
+```
+Figura 1 - Preço das ações da NVIDIA de 2007 até hoje.
+
+Nota-se um aumento ao longo da pandemia - a partir de 2020, além de uma subida 
+significativa atribuída ao uso de GPUs vendidos por eles para treinamento de lar-
+ge language models (chat gpt e outros).
+
+Calculo o log retorno, valor que verifica a dependência linear da mudança de preço
+ao longo do tempo. Ele mostra se o retorno do passado pode predizer a direção futura
+das movimentações de preço.
+```{r}
+lr <- diff(log(nvidia$NVDA.Close)) 
+lr[1]<-0
+```
+
+```{r}
+autoplot(lr)
+```
+Figura 2 - Gráfico da série de log retorno dos preços das ações da NVIDIA.
+
+O gráfico do log retorno apresenta uma forma/distribuição semelhante a de um ruído 
+branco. Com isso, conclui-se que o processo é estacionário.
+
+Analisaremos o comportamento da função de autocorrelação para o log retorno (tanto 
+o valor normal como ao quadrado).
+
+```{r}
+acf(lr)
+```
+Figura 3 - Gráfico da função de autocorrelação do log retorno.
+
+A Figura 3 apresenta o gráfico da função de autocorrelação para o log retorno. Nela
+vemos o lag 1 como significativo, seguido de alguns picos isolados nos lags 8, 16,
+20 e 30. Vale destacar que o lag 20 refere-se aproximadamente ao período de 1 
+mês corrido.
+
+É muito difícil prever o retorno diariamente, sendo assim difícil de encontrar dependência
+com valores passados que apontem a direção (positiva ou negativa) do valor do retorno 
+futuro.
+
+O pequeno pico no lag 1 demonstra que o log retorno de hoje depende do log retorno
+de ontem. Dado que temos cerca de 4873 dias de preços de ações é comum que o intervalo
+de confiança fique mais estreito e valores baixos de correlação possam parecer 
+estatisticamente relevantes.
+
+Dos 36 lags calculados é esperado que cerca de 2 apresentem valores significativos
+ao acaso.
+
+```{r}
+acf(lr^2)
+```
+Figura 4 - Gráfico da função de autocorrelação do log retorno ao quadrado.
+
+A Figura 3 apresenta o gráfico da função de autocorrelação para o log retorno ao 
+quadrado. O gráfico desta transformação pode apreentar dependência não linear e
+clusterização de volatilidade ou variação. 
+
+Ao aplicar a potência de 2 aos lags, nota-se que praticamente todos eles ficam
+com valores significantes, demonstrando autocorrelações positivas que tendem a 
+diminuir lentamente ao longo dos demais lags. 
+
+Geralmente, para séries financeiras, o retorno não tem variância condicional constante e 
+altos períodos de volatilidade tendem a ser agrupados. Ou seja, existe uma dependência
+forte em picos de variação do retorno baseado em seu histórico.
+
+```{r}
+pacf(lr)
+```
+Figura 5 - Gráfico da função de autocorrelação parcial do log retorno.
+
+Assim como na análise da figura 3, notamos aqui a presença de lags relevantes nos 
+mesmos índices, como 8, 15, 20 e 30. Nota-se, entretanto, que o lag 1 é mais pronun-
+ciado. Com o conhecimento obtido até então, entendo que a série dos preços da ação
+da NVIDIA apresenta um comportamento autoregressivo, com parâmetro p = 1. Essa
+definição se dá pelo lag pronunciado em PACF e os lags do ACF estarem contidos
+no intervalo de confiança apresentado.
+
+Com base nesses dados, proponho um modelo APARCH(p,q), sendo p=1 e q=0 - logo 
+APARCH(1,0), para modelar o comportamento da série de log retorno das ações da 
+NVIDIA, usando a distribuição condicional t-student padronizada e assimétrica.
+
+A premissa adotada é que a volatilidade vista na Figura 4 é assimétrica, ou seja,
+informação negativa gera muito mais volatilidade do que informação positiva, mantida
+a mesma magnitude. Além disso, esse tipo de modelo é bastante utilizado para previsão
+de comportamento de preços de ações.
+
+Após avaliação dos resíduos padronizados quadrados, nota-se que o modelo com parâmetros
+p=1 e q=0 falha no teste Ljung-Box R^2. Sendo assim, é feita uma nova proposta de 
+modelo, com parâmetros p=2 e q=0.
+
+```{r}
+aparch_model <- garchFit(formula = ~aparch(2,0), lr, include.mean = TRUE, 
+                        cond.dist = "sstd", trace = FALSE)
+summary(aparch_model)
+```
+O modelo apresenta a relação das estatísticas geradas - parâmetros estimados, com 
+seus respectivos erros padrão, t-value e relevância estatística. Testes são aplicados
+adotando um intervalo de confiança de 95%. Destaca-se que todos os parâmetros são 
+estatisticamente relevantes, pois a probabilidade de encontrar um valor maior que 
+o t-value obtido é menor que 0.05.
+
+Além disso, são apresentados os testes dos resíduos padronizados. O teste de hipó-
+tese de Ljung-Box tem como Null Hypothesis a premissa que não existe autocorrelação
+nos resíduos - os dados são distribuídos independentemente. Um p-value > 0.05 é
+um bom sinal para o modelo, pois não rejeita a Null Hypothesis. Sendo assim, 
+espera-se que tanto os valores de R e R^2 não rejeitem a Null Hypothesis. Analisan-
+do os resultados nos lags 10 e 15, tanto para R quanto para R^2, vemos que os va-
+lores apresentados são superiores a 0.05.
+
+Analisarei o comportamento dos resíduos obtidos deste modelo.
+
+```{r}
+plot(residuals(aparch_model, standardize = TRUE), type="l")
+```
+Figura 6 - Resíduos padronizados do modelo APARCH(2,0).
+
+A figura 6 apresenta os resíduos padronizados ao longo da série e podemos notar 
+a semelhança do seu formato com a de um ruído branco. Seguirei com a análise da 
+autocorrelação deles.
+
+```{r}
+par(mfrow = c(1, 2), mar = c(6, 2, 6, 2))
+acf(residuals(aparch_model, standardize = TRUE), main="ACF dos resíduos")
+acf(residuals(aparch_model, standardize = TRUE)^2, main="ACF dos resíduos ao quadrado")
+par(mfrow = c(1, 1))
+```
+Figura 7 - Gráficos da função de autocorrelação para os resíduos padronizados
+(as-is e ao quadrado) do modelo APARCH(2,0).
+
+A figura 7 apresenta os gráficos da função de autocorrelação dos resíduos padroni-
+zados do modelo para o valor as-is quanto ao quadrado. Espera-se que os valores de
+lag mantenham-se contidos dentro do intervalo de confiança apresentado.
+
+Tanto no primeiro quanto no segundo quadrante notamos que os valores seguem essa
+premissa, com poucos lags sendo considerados relevantes. Como informado anterior-
+mente, o tamanho do conjunto de dados analisado afeta diretamente no quão estrei-
+to o intervalo pode ficar.
+
+```{r}
+plot(aparch_model, which = 13)
+```
+Figura 8 - QQplot dos resíduos do modelo APARCH(2,0).
+
+Por fim, vemos na figura 8 que os resíduos seguem a distribuição condicional 
+t-student padronizada e assimétrica.
+
+```{r}
+ci <- 1.96
+
+predicted_value <- fitted(aparch_model)
+se <- fGarch::volatility(aparch_model)
+
+upper_bound <- predicted_value + (2 * ci) * se
+lower_bound <- predicted_value - (2 * ci) * se
+
+ts.plot(ts(lr), ts(upper_bound), ts(lower_bound), xlab="index", ylab="log_retorno", lty=c(1,1,1), col=c("lightblue", "gray", "gray"))
+```
+Figura 9 - Série de preços das ações da NVIDIA junto com o intervalo de confiança
+calculado com 2 desvios padrões estimados.
+
+A figura 9 encerra a análise destes dados, apresentando a série de preço das ações 
+da NVIDIA junto com o intervalo de confiança calculado com 2 desvios padrões estimados.
