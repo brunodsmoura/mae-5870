@@ -1,0 +1,317 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Esse notebook foi utilizado para a criação do artigo da disciplina MAE5870 de Séries
+Temporais.
+
+```{r}
+install.packages("openxlsx")
+install.packages("dplyr")
+install.packages("lubridate")
+install.packages("car")
+install.packages("forecast")
+install.packages("glarma")
+install.packages("lmtest")
+```
+
+
+```{r}
+library(openxlsx)
+library(dplyr)
+library(lubridate)
+library(car)
+library(forecast)
+library(glarma)
+library(lmtest)
+```
+
+```{r}
+data <- read.xlsx("../resources/incendios-florestais-em-areas-protegidas-boi-areas-protegidas-2019-marco.xlsx", sheet = 1)
+
+data$DataHoraDeteccao <- convertToDate(data$DataHoraDeteccao)
+data$DataDeteccao <- convertToDate(data$DataDeteccao)
+data$InicioCombate <- convertToDate(data$InicioCombate)
+data$TerminoCombate <- convertToDate(data$TerminoCombate)
+```
+
+```{r}
+min(data$DataDeteccao); max(data$DataDeteccao)
+```
+
+```{r}
+day_agg_df <- data |> group_by(day=floor_date(DataDeteccao, "day")) |> summarise(qty = n_distinct(NumBOI))
+day_y <- ts(day_agg_df[,2], start=c(2019,1,4), frequency = 1)
+```
+
+```{r}
+ts.plot(y, xlab="Mês/Ano", ylab="# NumBOI", main="Número de ocorrências de Incêndio em São Paulo de 2019 a 2025")
+```
+
+
+```{r}
+agg_df <- data |> group_by(month_year=floor_date(DataDeteccao, "month")) |> summarise(qty = n_distinct(NumBOI))
+```
+
+```{r}
+y <- ts(agg_df[,2], start=c(2019,2), end=c(2025,11), frequency = 12)
+```
+
+```{r}
+n_months = 12 
+ts.plot(y, xlab="month_year", ylab="qty"); abline(v = time(y)[seq(n_months, length(y), by = n_months)], col = "red", lty = 3)
+```
+```{r}
+plot(data |> group_by(year(DataDeteccao)) |> summarise(nr_cities = n_distinct(NomMunicipio)))
+```
+
+```{r}
+mean(y); var(y[,1])
+```
+
+A imagem acima apresenta a série temporal de Incêndios Florestais em São Paulo 
+de 2019 até final de 2025. Destaca-se a tendência positiva entre os meses de 
+maio e setembro, seguido de uma queda, além de uma repetição sazonal anual 
+aparente. Nota-se também que a mesma não é estacionária. 
+
+Adiciona-se um gráfico sobre o comportamento do número de cidades que apresentaram
+registros de ocorrência de incêndio ao longo dos anos explorados. Nota-se uma ano-
+malia para o ano de 2022, resultado do fenômeno La Niña.
+
+Voltando a série principal, aplicarei a diferenciação no lag 12 para avaliar se 
+a tendência se mantém.
+
+```{r}
+mean(diff(y, 12)); var(diff(y[,1], 12))
+```
+
+```{r}
+ts.plot(diff(y, 12), xlab="month_year", ylab="qty")
+```
+O gráfico acima apresenta uma tendência levemente decrescente. Antes de seguirmos
+para a análise das funções de autocorrelação (total - ACF e parcial - PACF), efetuaremos
+uma nova diferenciação.
+
+```{r}
+diff_y_both_12_and_1 <- diff(diff(y, 12), 1)
+```
+
+```{r}
+ts.plot(diff_y_both_12_and_1, xlab="month_year", ylab="qty")
+```
+
+```{r}
+mean(diff_y_both_12_and_1); var(diff_y_both_12_and_1[,1])
+```
+
+Após essa diferenciação dupla perde-se a tendência vista na imagem anterior, a 
+série passa a ter média próxima de 0 e variância ao redor de 264. Analisarei os
+gráficos da função de autocorrelação (total - ACF e parcial - PACF) a seguir.
+
+```{r}
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+acf(diff_y_both_12_and_1, main="ACF")
+pacf(diff_y_both_12_and_1, main="PACF")
+par(mfrow=c(1,1))
+```
+O gráfico de ACF apresenta lags relevantes no instante 2, além de uma rein-
+cidência no lag 12. De fato existe sazonalidade com frequência de 12 meses. 
+Com base neste gráfico definiremos o valor dos parâmetros q e Q referente ao
+componente de média móvel.
+
+Já o gráfico de PACF também apresenta lags relevantes no instante 2 e reincidên-
+cia no lag 12. Vale destacar, entretanto, que os lags posteriores a 2 tem tendência
+decrescente de forma lenta. Com base neste gráfico definiremos o valor dos 
+parâmetros p e P referente ao componente de auto regressão.
+
+```{r}
+plot(stl(y[,1], s.window="periodic"))
+```
+# Modeling
+## SARIMA(0,1,2)(1,1,1)12
+
+```{r}
+sarima_model <- arima(y, order=c(0,1,2), seasonal=list(order=c(1,1,1), period=12), fixed=c(NA, NA, 0, NA))
+sarima_model
+```
+
+```{r}
+coeftest(sarima_model)
+```
+```{r}
+coef(sarima_model)
+```
+
+```{r}
+aa_model <- auto.arima(y)
+summary(aa_model)
+```
+```{r}
+coeftest(aa_model)
+```
+
+```{r}
+par(mfrow=c(1,2), mar=c(8,2,4,2))
+acf(sarima_model$residuals, main="ACF SARIMA(0,1,2)(1,1,1)12")
+acf(aa_model$residuals, main="ACF SARIMA(0,0,1)(2,1,0)12")
+par(mfrow=c(1,1))
+```
+
+```{r}
+par(mfrow=c(1,2), mar=c(8,2,4,2))
+qqPlot(sarima_model$residuals, main="qqplot SARIMA(0,1,2)(1,1,1)12")
+qqPlot(aa_model$residuals, main="qqplot SARIMA(0,0,1)(2,1,0)12")
+par(mfrow=c(1,1))
+```
+
+```{r}
+Box.test(sarima_model$residuals, lag = 15, type = "Ljung-Box")
+Box.test(aa_model$residuals, lag = 15, type = "Ljung-Box")
+```
+```{r}
+ci <- 1.96
+
+custom_sarima_forecast <- predict(sarima_model, n.ahead = 12)
+
+custom_sarima_upper_bound <- custom_sarima_forecast$pred + ci * custom_sarima_forecast$se
+custom_sarima_lower_bound <- custom_sarima_forecast$pred - ci * custom_sarima_forecast$se
+
+aarima_forecast <- predict(aa_model, n.ahead = 12)
+
+aarima_upper_bound <- aarima_forecast$pred + ci * aarima_forecast$se
+aarima_lower_bound <- aarima_forecast$pred - ci * aarima_forecast$se
+
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+ts.plot(y, (y - residuals(sarima_model)), custom_sarima_forecast$pred, custom_sarima_upper_bound, custom_sarima_lower_bound, xlab="mês/ano", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray"), main="Previsão SARIMA(0,1,2)(1,1,1)12"); abline(h = 0, col = "black", lty = 4, lwd = 1)
+legend("topleft", 
+       legend = c("observado", "previsto", "projetado"), 
+       col = c("black", "red", "blue"), 
+       lty = c(1, 2, 1),
+       cex=0.5)
+ts.plot(y, (y - residuals(aa_model)), aarima_forecast$pred, aarima_upper_bound, aarima_lower_bound, xlab="mês/ano", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray"), main="Previsão SARIMA(0,0,1)(2,1,0)12"); abline(h = 0, col = "black", lty = 4, lwd = 1)
+legend("topleft", 
+       legend = c("observado", "previsto", "projetado"), 
+       col = c("black", "red", "blue"), 
+       lty = c(1, 2, 1),
+       cex=0.5)
+par(mfrow = c(1,1))
+```
+
+Como notamos nos plots de previsão de ambos os modelos gerados, alguns tempos t 
+contaram com valores abaixo de 0.
+
+Buscando contornar essa situação, efetuarei o estudo da série aplicando a trans-
+formação log(valor+1) e avaliarei os gráficos da série para identificação de um
+novo modelo para competir com o auto.arima.
+
+```{r}
+transformed_y <- log(y + 1)
+```
+
+```{r}
+n_months = 12 
+ts.plot(transformed_y, xlab="month_year", ylab="qty"); abline(v = time(transformed_y)[seq(n_months, length(transformed_y), by = n_months)], col = "red", lty = 3)
+```
+```{r}
+diff_transformed_y <- diff(diff(transformed_y, 12), 1)
+```
+
+```{r}
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+ts.plot(diff(transformed_y, 12), xlab="mês/ano", ylab="qty", main="diff_12")
+ts.plot(diff_transformed_y, xlab="mês/ano", ylab="qty", main="diff_12 > diff_1")
+par(mfrow = c(1, 1))
+```
+
+```{r}
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+acf(diff_transformed_y, main="ACF (série transformada)")
+pacf(diff_transformed_y, main="PACF (série transformada)")
+par(mfrow = c(1, 1))
+```
+```{r}
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+acf(diff_transformed_y, main="ACF (série transformada)", lag.max=24)
+acf(diff_y_both_12_and_1, main="ACF (série original)", lag.max=24)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+pacf(diff_transformed_y, main="PACF (série transformada)", lag.max=24)
+pacf(diff_y_both_12_and_1, main="PACF (série original)", lag.max=24)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+sarima_model_t <- arima(transformed_y, order=c(0,1,1), seasonal=list(order=c(0,1,1), frequency=12))
+sarima_model_t
+```
+
+```{r}
+coeftest(sarima_model_t)
+```
+```{r}
+Box.test(sarima_model$residuals, lag = 15, type = "Ljung-Box")
+Box.test(aa_model$residuals, lag = 15, type = "Ljung-Box")
+```
+
+```{r}
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+acf(sarima_model_t$residuals, main="Resíduos SARIMA (0,1,1)(0,1,1)12")
+acf(aa_model$residuals, main="Resíduos SARIMA (0,0,1)(2,1,0)12")
+par(mfrow = c(1, 1))
+```
+
+
+```{r}
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+qqPlot(sarima_model_t$residuals, main="Resíduos SARIMA (0,1,1)(0,1,1)12")
+qqPlot(aa_model$residuals, main="Resíduos SARIMA (0,0,1)(2,1,0)12")
+par(mfrow = c(1, 1))
+```
+```{r}
+nr_months <- 12
+
+months_ahead_fc <- predict(sarima_model_t, n.ahead = nr_months)
+
+ci <- 1.96
+
+predicted <- exp(months_ahead_fc$pred) - 1
+
+upper_bound <- months_ahead_fc$pred + ci * months_ahead_fc$se
+lower_bound <- months_ahead_fc$pred - ci * months_ahead_fc$se
+
+final_upper_bound <- exp(upper_bound) - 1
+final_lower_bound <- exp(lower_bound) - 1
+
+months_ahead_fc_aa <- predict(aa_model, n.ahead = nr_months)
+
+upper_bound_aa <- months_ahead_fc_aa$pred + ci * months_ahead_fc_aa$se
+lower_bound_aa <- months_ahead_fc_aa$pred - ci * months_ahead_fc_aa$se
+
+par(mfrow = c(1, 2), mar = c(8, 2, 4, 2))
+ts.plot(y, exp(transformed_y - residuals(sarima_model_t))-1, predicted, final_upper_bound, final_lower_bound, xlab="mês/ano", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray"), main="Previsão SARIMA(0,1,1)(0,1,1)12"); abline(h = 0, col = "black", lty = 4, lwd = 1)
+legend("topleft", 
+       legend = c("observado", "previsto", "projetado"), 
+       col = c("black", "red", "blue"), 
+       lty = c(1, 2, 1),
+       cex=0.6)
+ts.plot(y, (y - residuals(aa_model)), months_ahead_fc_aa$pred, upper_bound_aa, lower_bound_aa, xlab="mês/ano", ylab="qty", lty=c(1,2,1,3,3), col=c("black", "red", "blue", "gray", "gray"), main="Previsão SARIMA(0,0,1)(2,1,0)12"); abline(h = 0, col = "black", lty = 4, lwd = 1)
+legend("topleft", 
+       legend = c("observado", "previsto", "projetado"), 
+       col = c("black", "red", "blue"), 
+       lty = c(1, 2, 1),
+       cex=0.6)
+par(mfrow = c(1, 1))
+```
+Notamos o efeito do uso da transformação de log(valor+1) e seu impacto tanto no intervalo
+de valores como também nos valores gerados. Passamos a ter um intervalo assimétrico
+para o primeiro modelo, além de projeçõe mais modestas e, de certa forma, otimistas
+quanto à baixa de ocorrências de incêndio. O modelo gerado por auto.arima, na série
+original, apresenta valores negativos previstos porém traz uma projeção mais condizente
+com o comportamento visto na série. Nota-se também que o intervalo de valores é 
+simétrico.
